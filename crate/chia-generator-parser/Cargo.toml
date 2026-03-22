@@ -1,0 +1,30 @@
+[package]
+name = "chia-generator-parser"
+version = "0.2.0"
+edition = "2021"
+description = "Chia blockchain generator bytecode parser"
+license = "MIT"
+
+[[example]]
+name = "basic_usage"
+path = "examples/basic_usage.rs"
+
+[dependencies]
+# Core dependencies
+chia-protocol = "0.26.0"
+chia-traits = "0.26.0"
+chia-consensus = "0.26.0"  # For run_block_generator2
+chia-bls = "0.26.0"  # For BLS signatures
+
+# Utilities
+clvmr = "0.14.0"
+clvm-utils = "0.26.0"
+hex = "0.4"
+sha2 = "0.10"
+serde = { version = "1.0", features = ["derive"] }
+tracing = "0.1"
+thiserror = "1.0"
+
+[features]
+default = []
+python-compat = [] 

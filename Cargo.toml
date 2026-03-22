@@ -1,0 +1,52 @@
+[package]
+name = "chia-block-listener"
+version = "0.2.0"
+edition = "2021"
+description = "Event driven listener for Chia blockchain"
+license = "Apache-2.0"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+futures-util = "0.3"
+tokio-util = "0.7"
+
+# Chia
+chia-protocol = "0.26"
+chia-traits = "0.26"
+chia-ssl = "0.26"
+
+# Networking
+tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
+native-tls = { version = "0.2", features = ["vendored"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+hex = "0.4"
+
+# Utilities
+thiserror = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+sha2 = "0.10"
+dirs = "5"
+anyhow = "1"
+tokio-stream = { version = "0.1", features = ["sync"] }
+
+# Workspace crates
+dig-dns-discovery = { workspace = true }
+chia-generator-parser = { workspace = true }
+
+[profile.release]
+lto = true
+
+[workspace]
+members = [
+    ".",
+    "crate/chia-generator-parser",
+    "crate/dig-dns-discovery",
+]
+
+[workspace.dependencies]
+dig-dns-discovery = { path = "crate/dig-dns-discovery", version = "0.2.0" }
+chia-generator-parser = { path = "crate/chia-generator-parser", version = "0.2.0" }

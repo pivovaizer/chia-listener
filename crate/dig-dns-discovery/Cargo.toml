@@ -1,0 +1,18 @@
+[package]
+name = "dig-dns-discovery"
+version = "0.2.0"
+edition = "2021"
+description = "DNS resolver for Chia peers"
+license = "MIT"
+
+
+[dependencies]
+tokio = { version = "1.0", features = ["full"] }
+trust-dns-resolver = "0.23"
+serde = { version = "1.0", features = ["derive"] }
+thiserror = "1.0"
+tracing = "0.1"
+rand = "0.8"
+
+[dev-dependencies]
+tracing-subscriber = "0.3" 
