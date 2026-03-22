@@ -192,6 +192,7 @@ impl ChiaPeerPool {
             let host_for_stream = host.clone();
             let cancel_for_stream = self.cancel_token.clone();
             let tx_stream_clone = tx_stream.clone();
+            let inner_for_stream = self.inner.clone();
 
             let stream_handle = tokio::spawn(async move {
                 // Establish streaming connection
@@ -241,6 +242,17 @@ impl ChiaPeerPool {
                                 maybe = stream_rx.recv() => {
                                     match maybe {
                                         Some(StreamEvent::ParsedBlock(parsed)) => {
+                                            // Skip blocks that are far behind the global peak
+                                            let dominated = {
+                                                let guard = inner_for_stream.read().await;
+                                                guard.highest_peak
+                                                    .map(|hp| parsed.height < hp.saturating_sub(10))
+                                                    .unwrap_or(false)
+                                            };
+                                            if dominated {
+                                                trace!("Skipping stale block {} from {}", parsed.height, reader_peer_id);
+                                                continue;
+                                            }
                                             let block_event = Self::convert_parsed_block_to_external(
                                                 &parsed,
                                                 reader_peer_id.clone(),
@@ -253,12 +265,24 @@ impl ChiaPeerPool {
                                             }
                                         }
                                         Some(StreamEvent::NewPeak(new_peak)) => {
-                                            // Update peak state and emit best-effort
-                                            let _ = tx_stream_clone.try_send(Event::NewPeakHeight(NewPeakHeightEvent {
-                                                old_peak: None,
-                                                new_peak,
-                                                peer_id: reader_peer_id.clone(),
-                                            }));
+                                            // Only emit and update if this peak is higher than the global highest
+                                            let old_peak = {
+                                                let mut guard = inner_for_stream.write().await;
+                                                let old = guard.highest_peak;
+                                                if old.map(|hp| new_peak > hp).unwrap_or(true) {
+                                                    guard.highest_peak = Some(new_peak);
+                                                    Some(old)
+                                                } else {
+                                                    None // stale peak, don't emit
+                                                }
+                                            };
+                                            if let Some(old) = old_peak {
+                                                let _ = tx_stream_clone.try_send(Event::NewPeakHeight(NewPeakHeightEvent {
+                                                    old_peak: old,
+                                                    new_peak,
+                                                    peer_id: reader_peer_id.clone(),
+                                                }));
+                                            }
                                         }
                                         None => break,
                                     }

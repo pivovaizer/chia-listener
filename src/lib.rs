@@ -21,7 +21,7 @@ pub fn init_tracing() {
     let filter = EnvFilter::builder()
         .with_default_directive(LevelFilter::INFO.into())
         .from_env_lossy()
-        .add_directive("chia_block_listener=info".parse().unwrap());
+        .add_directive("chia_listener=info".parse().unwrap());
 
     fmt()
         .with_env_filter(filter)

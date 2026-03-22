@@ -1,5 +1,6 @@
-use chia_block_listener::{init_tracing, BlockListener, BlockListenerConfig};
-use chia_block_listener::types::Event;
+use chia_listener::{init_tracing, BlockListener, BlockListenerConfig};
+use chia_listener::types::Event;
+use std::collections::HashSet;
 use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::StreamExt;
 
@@ -28,18 +29,19 @@ async fn main() -> anyhow::Result<()> {
 
     println!("Listening for Chia blocks... (Ctrl+C to stop)\n");
 
+    let mut seen_blocks: HashSet<u32> = HashSet::new();
+
     while let Some(item) = events.next().await {
         match item {
-            Ok(Event::PeerConnected(e)) => {
-                println!("[+] Connected: {} ({}:{})", e.peer_id, e.host, e.port);
-            }
-            Ok(Event::PeerDisconnected(e)) => {
-                println!("[-] Disconnected: {} {:?}", e.peer_id, e.message);
-            }
+            Ok(Event::PeerConnected(_)) | Ok(Event::PeerDisconnected(_)) => {}
             Ok(Event::NewPeakHeight(e)) => {
                 println!("Peak: {} (was {:?})", e.new_peak, e.old_peak);
             }
             Ok(Event::BlockReceived(block)) => {
+                if !seen_blocks.insert(block.height) {
+                    continue; // already seen this block
+                }
+
                 if block.coin_spends.is_empty() {
                     println!("Block #{} - empty", block.height);
                     continue;

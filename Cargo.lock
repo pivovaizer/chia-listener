@@ -165,31 +165,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
 
 [[package]]
-name = "chia-block-listener"
-version = "0.2.0"
-dependencies = [
- "anyhow",
- "chia-generator-parser",
- "chia-protocol",
- "chia-ssl",
- "chia-traits 0.26.0",
- "dig-dns-discovery",
- "dirs",
- "futures-util",
- "hex",
- "native-tls",
- "serde",
- "sha2",
- "thiserror",
- "tokio",
- "tokio-stream",
- "tokio-tungstenite",
- "tokio-util",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "chia-bls"
 version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -257,6 +232,31 @@ dependencies = [
  "sha2",
  "thiserror",
  "tracing",
+]
+
+[[package]]
+name = "chia-listener"
+version = "0.2.0"
+dependencies = [
+ "anyhow",
+ "chia-generator-parser",
+ "chia-protocol",
+ "chia-ssl",
+ "chia-traits 0.26.0",
+ "dig-dns-discovery",
+ "dirs",
+ "futures-util",
+ "hex",
+ "native-tls",
+ "serde",
+ "sha2",
+ "thiserror",
+ "tokio",
+ "tokio-stream",
+ "tokio-tungstenite",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

@@ -2,8 +2,9 @@
 name = "dig-dns-discovery"
 version = "0.2.0"
 edition = "2021"
-description = "DNS resolver for Chia peers"
-license = "MIT"
+description = "DNS peer discovery for chia-listener"
+license = "Apache-2.0"
+repository = "https://github.com/pivovaizer/chia-listener"
 
 
 [dependencies]

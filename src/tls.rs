@@ -8,7 +8,7 @@ pub fn load_or_generate_cert() -> Result<ChiaCertificate, ChiaError> {
     // Use a fixed location for certificates
     let cert_dir = dirs::home_dir()
         .ok_or_else(|| ChiaError::Other("Could not find home directory".to_string()))?
-        .join(".chia-block-listener")
+        .join(".chia-listener")
         .join("ssl");
 
     fs::create_dir_all(&cert_dir).map_err(ChiaError::Io)?;

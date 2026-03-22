@@ -1,9 +1,10 @@
 [package]
-name = "chia-block-listener"
+name = "chia-listener"
 version = "0.2.0"
 edition = "2021"
-description = "Event driven listener for Chia blockchain"
+description = "Event-driven Chia blockchain listener. Connects to multiple peers, streams new blocks and transactions in real-time."
 license = "Apache-2.0"
+repository = "https://github.com/pivovaizer/chia-listener"
 
 [dependencies]
 # Async runtime

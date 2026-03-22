@@ -2,8 +2,9 @@
 name = "chia-generator-parser"
 version = "0.2.0"
 edition = "2021"
-description = "Chia blockchain generator bytecode parser"
-license = "MIT"
+description = "CLVM generator bytecode parser for chia-listener"
+license = "Apache-2.0"
+repository = "https://github.com/pivovaizer/chia-listener"
 
 [[example]]
 name = "basic_usage"
