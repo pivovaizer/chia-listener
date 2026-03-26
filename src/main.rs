@@ -1,4 +1,5 @@
 use chia_listener::{init_tracing, BlockListener, BlockListenerConfig};
+use chia_listener::database::Database;
 use chia_listener::types::Event;
 use std::collections::HashSet;
 use tokio_stream::wrappers::BroadcastStream;
@@ -22,6 +23,9 @@ async fn main() -> anyhow::Result<()> {
         target_peers: 10,
         buffer: 1024,
     };
+
+    let db = Database::connect().await;
+    println!("=== Latest block height: {:?} ===", db.get_max_height().await);
 
     let listener = BlockListener::new(config)?;
     let rx = listener.subscribe();

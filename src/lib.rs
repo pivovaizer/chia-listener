@@ -8,6 +8,7 @@ pub mod peer_pool;
 pub mod protocol;
 pub mod tls;
 pub mod types;
+pub mod database;
 
 pub use block_listener::BlockListener;
 pub use chia_generator_parser::{string_to_bytes32, GeneratorParserError};

@@ -15,5 +15,5 @@ Thumbs.db
 .env
 
 # Claude Code
-.claude/
 TODO.md
+.env
