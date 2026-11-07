@@ -279,7 +279,9 @@ mod tests {
         assert!(discovery.is_ok());
     }
 
+    // Needs network access. Run with: cargo test -- --ignored
     #[tokio::test]
+    #[ignore = "requires network"]
     async fn test_ipv4_resolution() {
         let discovery = DnsDiscovery::new().await.unwrap();
 
@@ -291,6 +293,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "requires network"]
     async fn test_ipv6_resolution() {
         let discovery = DnsDiscovery::new().await.unwrap();
 

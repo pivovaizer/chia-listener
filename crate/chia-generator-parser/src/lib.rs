@@ -2,6 +2,9 @@ pub mod error;
 pub mod parser;
 pub mod types;
 
+#[cfg(test)]
+mod tests;
+
 pub use error::*;
 use hex::FromHexError;
 pub use parser::*;

@@ -82,6 +82,15 @@ docker exec -it rustlistener psql -U listener -d chia   # open psql
 docker compose down -v && docker compose up -d          # recreate the DB (deletes all data!)
 ```
 
+## Tests
+
+```bash
+cargo test --workspace                 # offline tests
+cargo test --workspace -- --ignored    # tests that need network access (DNS)
+```
+
+The parser rejects blocks it cannot parse reliably (invalid generator, spend count mismatch, references to previous generators) with an error instead of reporting them as empty. Tests cover this behaviour and the `coin_id` computation.
+
 ## Usage as a Library
 
 Add to your `Cargo.toml`:
@@ -164,17 +173,26 @@ The same block usually arrives from several peers. Deduplicate by `height` / `he
 
 Each `BlockReceived` event contains:
 
-- `height` — block height
-- `header_hash` — block header hash
-- `weight` — cumulative chain weight
-- `timestamp` — block timestamp
+All hashes are lowercase hex strings.
+
+- `height`, `header_hash`, `prev_header_hash` — block identity and chain link
+- `weight`, `total_iters` — cumulative chain weight and VDF iterations (u128 as string)
+- `signage_point_index`
+- `is_transaction_block` — only transaction blocks have a timestamp, fees, cost and a generator
+- `prev_transaction_block_hash` — previous transaction block (transaction blocks only)
+- `timestamp` — unix seconds (`None` for non-transaction blocks)
+- `farmer_puzzle_hash`, `pool_puzzle_hash` — reward targets
+- `plot_public_key`, `pool_contract_puzzle_hash` — proof of space (pool contract only for pooling plots)
+- `fees`, `cost` — user fees in mojo and CLVM cost (transaction blocks only)
+- `generator_ref_list` — heights of previous generators referenced by this block
 - `peer_id` — peer the block came from
-- `coin_spends` — parsed transactions with puzzle reveal and solution
-- `coin_additions` — new coins created
+- `coin_spends` — parsed transactions with puzzle reveal, solution and position in the generator
+- `coin_additions` — new coins (reward coins + coins created by spends)
 - `coin_removals` — coins spent
 - `coin_creations` — coins created by spends
-- `has_transactions_generator` — whether the block contains a CLVM generator
-- `generator_size` — size of the generator bytecode
+- `has_transactions_generator`, `generator_size` — CLVM generator presence and size
+
+Every coin (`CoinRecord`) has a `coin_id` (`sha256(parent_coin_info || puzzle_hash || amount)`) and a `coinbase` flag for farmer / pool rewards.
 
 ## Project Structure
 
