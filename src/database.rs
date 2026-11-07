@@ -1,4 +1,10 @@
 use tokio_postgres::{Client, NoTls};
+use tracing::info;
+
+// Embeds every file from ./migrations into the binary at compile time.
+mod embedded {
+    refinery::embed_migrations!("migrations");
+}
 
 pub struct Database {
     client: Client,
@@ -9,7 +15,7 @@ impl Database {
         dotenvy::dotenv().expect("Failed to load .env file");
         let db_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
 
-        let (client, connection) =
+        let (mut client, connection) =
             tokio_postgres::connect(&db_url, NoTls).await.expect("DB connection failed");
 
         tokio::spawn(async move {
@@ -17,6 +23,15 @@ impl Database {
                 eprintln!("DB connection error: {}", e);
             }
         });
+
+        // Apply pending migrations; already applied ones are skipped.
+        let report = embedded::migrations::runner()
+            .run_async(&mut client)
+            .await
+            .expect("DB migrations failed");
+        for m in report.applied_migrations() {
+            info!("Applied migration {}", m);
+        }
 
         Database { client }
     }
