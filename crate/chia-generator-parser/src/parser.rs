@@ -50,7 +50,17 @@ impl BlockParser {
         let timestamp = block
             .foliage_transaction_block
             .as_ref()
-            .map(|ftb| ftb.timestamp as u32);
+            .map(|ftb| ftb.timestamp);
+        let prev_transaction_block_hash = block
+            .foliage_transaction_block
+            .as_ref()
+            .map(|ftb| hex::encode(ftb.prev_transaction_block_hash));
+
+        let rcb = &block.reward_chain_block;
+        let pos = &rcb.proof_of_space;
+        let foliage_data = &block.foliage.foliage_block_data;
+        let fees = block.transactions_info.as_ref().map(|ti| ti.fees);
+        let cost = block.transactions_info.as_ref().map(|ti| ti.cost);
 
         // Calculate header hash by serializing the foliage
         let header_hash = self.calculate_header_hash(&block.foliage)?;
@@ -94,7 +104,19 @@ impl BlockParser {
             height,
             weight: weight.to_string(),
             header_hash,
+            prev_header_hash: hex::encode(block.foliage.prev_block_hash),
+            total_iters: rcb.total_iters.to_string(),
+            signage_point_index: rcb.signage_point_index,
+            is_transaction_block: rcb.is_transaction_block,
+            prev_transaction_block_hash,
             timestamp,
+            farmer_puzzle_hash: hex::encode(foliage_data.farmer_reward_puzzle_hash),
+            pool_puzzle_hash: hex::encode(foliage_data.pool_target.puzzle_hash),
+            plot_public_key: hex::encode(pos.plot_public_key.to_bytes()),
+            pool_contract_puzzle_hash: pos.pool_contract_puzzle_hash.map(hex::encode),
+            fees,
+            cost,
+            generator_ref_list: block.transactions_generator_ref_list.clone(),
             coin_additions,
             coin_removals,
             coin_spends,
@@ -120,18 +142,24 @@ impl BlockParser {
             Some(tx_info) => tx_info
                 .reward_claims_incorporated
                 .iter()
-                .map(|claim| CoinInfo::new(claim.parent_coin_info, claim.puzzle_hash, claim.amount))
+                .map(|claim| {
+                    CoinInfo::new(claim.parent_coin_info, claim.puzzle_hash, claim.amount)
+                        .into_coinbase()
+                })
                 .collect(),
             None => Vec::new(),
         }
     }
 
     /// Process generator using chia-consensus to execute CLVM and extract coins
-    fn process_generator_for_coins(
+    ///
+    /// Every failure is returned as an error: a transaction block must never be
+    /// reported as having no spends just because we failed to run its generator.
+    pub(crate) fn process_generator_for_coins(
         &self,
         generator_bytes: &[u8],
-        _block_refs: &[u32],
-        _height: u32,
+        block_refs: &[u32],
+        height: u32,
     ) -> Result<(Vec<CoinInfo>, Vec<CoinSpendInfo>, Vec<CoinInfo>)> {
         debug!("Processing generator for coins using CLVM execution");
 
@@ -139,11 +167,18 @@ impl BlockParser {
             return Ok((Vec::new(), Vec::new(), Vec::new()));
         }
 
+        // TODO: fetch the referenced generators (DB first, then peers) and pass them in.
+        if !block_refs.is_empty() {
+            return Err(GeneratorParserError::UnsupportedGeneratorRefs {
+                height,
+                refs: block_refs.to_vec(),
+            });
+        }
+
         // Create allocator for CLVM execution
         let mut allocator = make_allocator(clvmr::LIMIT_HEAP);
 
-        // TODO: Fetch actual block references for compressed blocks
-        // For now, use empty references
+        // Empty: blocks with references are rejected above
         let generator_refs: Vec<&[u8]> = Vec::new();
 
         // Use test constants (similar to mainnet)
@@ -153,43 +188,43 @@ impl BlockParser {
         let signature = Signature::default();
 
         // Parse generator node
-        let generator_node = match node_from_bytes_backrefs(&mut allocator, generator_bytes) {
-            Ok(node) => node,
-            Err(e) => {
-                debug!("Failed to parse generator: {:?}", e);
-                return Ok((Vec::new(), Vec::new(), Vec::new()));
-            }
-        };
+        let generator_node = node_from_bytes_backrefs(&mut allocator, generator_bytes)
+            .map_err(|e| {
+                GeneratorParserError::InvalidGeneratorBytecode(format!(
+                    "block {height}: failed to parse generator: {e:?}"
+                ))
+            })?;
 
         // Setup arguments
-        let args = match setup_generator_args(&mut allocator, &generator_refs) {
-            Ok(args) => args,
-            Err(e) => {
-                debug!("Failed to setup generator args: {:?}", e);
-                return Ok((Vec::new(), Vec::new(), Vec::new()));
-            }
-        };
+        let args = setup_generator_args(&mut allocator, &generator_refs).map_err(|e| {
+            GeneratorParserError::ClvmExecutionError(format!(
+                "block {height}: failed to setup generator args: {e:?}"
+            ))
+        })?;
 
         // Run the generator to get the list of coin spends
-        let generator_output =
-            match self.run_generator(&mut allocator, generator_node, args, max_cost, flags) {
-                Ok(output) => output,
-                Err(e) => {
-                    debug!("Failed to run generator: {:?}", e);
-                    return Ok((Vec::new(), Vec::new(), Vec::new()));
-                }
-            };
+        let generator_output = self
+            .run_generator(&mut allocator, generator_node, args, max_cost, flags)
+            .map_err(|e| {
+                GeneratorParserError::ClvmExecutionError(format!(
+                    "block {height}: failed to run generator: {e}"
+                ))
+            })?;
 
         // Also run block generator2 to get spend conditions (for CREATE_COIN)
-        let spend_bundle_conditions = self.get_spend_bundle_conditions(
-            &mut allocator,
-            generator_bytes,
-            &generator_refs,
-            max_cost,
-            flags,
-            &signature,
-            &constants,
-        );
+        let spend_bundle_conditions = self
+            .get_spend_bundle_conditions(
+                &mut allocator,
+                generator_bytes,
+                &generator_refs,
+                max_cost,
+                flags,
+                &signature,
+                &constants,
+            )
+            .map_err(|e| {
+                GeneratorParserError::ClvmExecutionError(format!("block {height}: {e}"))
+            })?;
 
         // Extract coin spends from generator output
         self.extract_coin_spends_from_output(
@@ -197,6 +232,7 @@ impl BlockParser {
             generator_output,
             &spend_bundle_conditions,
         )
+        .map_err(|e| GeneratorParserError::ClvmParsingError(format!("block {height}: {e}")))
     }
 
     /// Run the generator program
@@ -225,8 +261,8 @@ impl BlockParser {
         flags: u32,
         signature: &Signature,
         constants: &ConsensusConstants,
-    ) -> SpendBundleConditions {
-        match run_block_generator2(
+    ) -> Result<SpendBundleConditions> {
+        run_block_generator2(
             allocator,
             generator_bytes,
             generator_refs.to_owned(),
@@ -235,16 +271,10 @@ impl BlockParser {
             signature,
             None, // No BLS cache
             constants,
-        ) {
-            Ok(conditions) => conditions,
-            Err(e) => {
-                info!(
-                    "Failed to execute generator with run_block_generator2: {:?}",
-                    e
-                );
-                SpendBundleConditions::default()
-            }
-        }
+        )
+        .map_err(|e| {
+            GeneratorParserError::ClvmExecutionError(format!("run_block_generator2 failed: {e:?}"))
+        })
     }
 
     /// Extract coin spends from generator output
@@ -259,32 +289,50 @@ impl BlockParser {
         let mut coins_spent = Vec::new();
 
         // Parse the generator output to extract coin spends
-        let Ok(spends_list) = first(allocator, generator_output) else {
-            return Ok((coins_spent, coin_spends, coins_created));
-        };
+        let spends_list = first(allocator, generator_output).map_err(|e| {
+            GeneratorParserError::ClvmParsingError(format!("generator output is not a list: {e:?}"))
+        })?;
 
         let mut iter = spends_list;
         let mut spend_index = 0;
 
-        while let Ok(Some((coin_spend, next_iter))) = next(allocator, iter) {
+        loop {
+            let (coin_spend, next_iter) = match next(allocator, iter) {
+                Ok(Some(item)) => item,
+                Ok(None) => break, // end of list
+                Err(e) => {
+                    return Err(GeneratorParserError::ClvmParsingError(format!(
+                        "malformed spend list at #{spend_index}: {e:?}"
+                    )))
+                }
+            };
             iter = next_iter;
 
-            if let Some(spend_info) = self.parse_single_coin_spend(
-                allocator,
-                coin_spend,
-                spend_index,
-                spend_bundle_conditions,
-            ) {
-                coins_spent.push(spend_info.coin.clone());
+            // A single unparsable spend makes the whole block unreliable.
+            let spend_info = self
+                .parse_single_coin_spend(allocator, coin_spend, spend_index, spend_bundle_conditions)
+                .ok_or_else(|| {
+                    GeneratorParserError::ClvmParsingError(format!(
+                        "failed to parse coin spend #{spend_index}"
+                    ))
+                })?;
 
-                // Add created coins
-                for created_coin in &spend_info.created_coins {
-                    coins_created.push(created_coin.clone());
-                }
+            coins_spent.push(spend_info.coin.clone());
+            coins_created.extend(spend_info.created_coins.iter().cloned());
+            coin_spends.push(spend_info);
 
-                coin_spends.push(spend_info);
-                spend_index += 1;
-            }
+            // spend_index must stay aligned with spend_bundle_conditions.spends
+            spend_index += 1;
+        }
+
+        // Sanity check: both runs of the generator must agree on the number of spends,
+        // otherwise created coins would be attributed to the wrong spend.
+        if coin_spends.len() != spend_bundle_conditions.spends.len() {
+            return Err(GeneratorParserError::ClvmParsingError(format!(
+                "spend count mismatch: generator output has {}, conditions have {}",
+                coin_spends.len(),
+                spend_bundle_conditions.spends.len()
+            )));
         }
 
         info!(
@@ -356,12 +404,12 @@ impl BlockParser {
             puzzle_hash_hex.len()
         );
 
-        // Create coin info
-        let coin_info = CoinInfo {
-            parent_coin_info: parent_hex,
-            puzzle_hash: puzzle_hash_hex,
-            amount,
-        };
+        // Create coin info (computes coin_id)
+        let coin_info = CoinInfo::from_bytes(&parent_bytes, &puzzle_hash_vec, amount)?;
+        debug!(
+            "spent coin {} parent={} puzzle_hash={}",
+            coin_info.coin_id, parent_hex, puzzle_hash_hex
+        );
 
         // Serialize puzzle reveal and solution
         let puzzle_reveal = node_to_bytes(allocator, puzzle).ok()?;
@@ -376,7 +424,7 @@ impl BlockParser {
             hex::encode(solution_bytes),
             true,
             "From transaction generator".to_string(),
-            0,
+            spend_index as u32, // position of the spend in the generator output
             created_coins,
         ))
     }
@@ -412,11 +460,7 @@ impl BlockParser {
         spend_cond
             .create_coin
             .iter()
-            .map(|new_coin| CoinInfo {
-                parent_coin_info: hex::encode(spend_cond.coin_id.as_ref()),
-                puzzle_hash: hex::encode(new_coin.puzzle_hash),
-                amount: new_coin.amount,
-            })
+            .map(|new_coin| CoinInfo::new(*spend_cond.coin_id, new_coin.puzzle_hash, new_coin.amount))
             .collect()
     }
 

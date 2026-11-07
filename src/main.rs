@@ -54,6 +54,11 @@ async fn main() -> anyhow::Result<()> {
                 println!("\n{}", "=".repeat(60));
                 println!("Block #{}", block.height);
                 println!("  Header: {}", block.header_hash);
+                println!("  Prev:   {}", block.prev_header_hash);
+                println!("  Farmer: {} | Pool: {}", block.farmer_puzzle_hash, block.pool_puzzle_hash);
+                println!("  Time: {:?} | Fees: {:?} mojo | Cost: {:?} | Refs: {:?}",
+                    block.timestamp, block.fees, block.cost, block.generator_ref_list
+                );
                 println!("  Additions: {} | Removals: {} | Spends: {}",
                     block.coin_additions.len(),
                     block.coin_removals.len(),
@@ -72,7 +77,9 @@ async fn main() -> anyhow::Result<()> {
                     println!("\n  --- New Coins (first 10) ---");
                     for (i, coin) in block.coin_additions.iter().take(10).enumerate() {
                         let xch = mojo_to_xch(&coin.amount);
-                        println!("  [{}] Puzzle: {}", i + 1, coin.puzzle_hash);
+                        let tag = if coin.coinbase { " [reward]" } else { "" };
+                        println!("  [{}] Coin: {}{}", i + 1, coin.coin_id, tag);
+                        println!("      Puzzle: {}", coin.puzzle_hash);
                         println!("      Amount: {} mojo ({} XCH)", coin.amount, xch);
                     }
                     if block.coin_additions.len() > 10 {

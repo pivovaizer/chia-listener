@@ -25,8 +25,43 @@ pub struct ParsedBlock {
     /// Block header hash (hex string for serialization)
     pub header_hash: String,
 
-    /// Block timestamp (optional)
-    pub timestamp: Option<u32>,
+    /// Header hash of the previous block (hex). Used for reorg detection.
+    pub prev_header_hash: String,
+
+    /// Total VDF iterations up to this block
+    pub total_iters: String,
+
+    pub signage_point_index: u8,
+
+    /// Transaction blocks carry timestamp, fees, cost and a generator
+    pub is_transaction_block: bool,
+
+    /// Header hash of the previous transaction block (hex); transaction blocks only
+    pub prev_transaction_block_hash: Option<String>,
+
+    /// Block timestamp in unix seconds; transaction blocks only
+    pub timestamp: Option<u64>,
+
+    /// Farmer reward target (hex)
+    pub farmer_puzzle_hash: String,
+
+    /// Pool reward target (hex)
+    pub pool_puzzle_hash: String,
+
+    /// Plot public key from the proof of space (hex, 48 bytes)
+    pub plot_public_key: String,
+
+    /// Pool contract puzzle hash (hex); set for pooling (NFT) plots
+    pub pool_contract_puzzle_hash: Option<String>,
+
+    /// User fees in mojo; transaction blocks only
+    pub fees: Option<u64>,
+
+    /// CLVM cost; transaction blocks only
+    pub cost: Option<u64>,
+
+    /// Heights of previous blocks whose generators this block references
+    pub generator_ref_list: Vec<u32>,
 
     /// Coin additions (new coins created)
     pub coin_additions: Vec<CoinInfo>,
@@ -50,32 +85,46 @@ pub struct ParsedBlock {
 /// Information about a coin (unspent transaction output)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CoinInfo {
+    /// Coin ID (hex string): sha256(parent_coin_info || puzzle_hash || amount)
+    pub coin_id: String,
+
     /// Parent coin ID (hex string)
     pub parent_coin_info: String,
 
-    /// Puzzle hash (hex string)  
+    /// Puzzle hash (hex string)
     pub puzzle_hash: String,
 
     /// Amount in mojos
     pub amount: Uint64,
+
+    /// True for farmer / pool reward coins (reward claims incorporated in the block)
+    #[serde(default)]
+    pub coinbase: bool,
 }
 
 impl CoinInfo {
     pub fn new(parent_coin_info: Bytes32, puzzle_hash: Bytes32, amount: Uint64) -> Self {
+        let coin_id = Coin::new(parent_coin_info, puzzle_hash, amount).coin_id();
         Self {
+            coin_id: hex::encode(coin_id),
             parent_coin_info: hex::encode(parent_coin_info),
             puzzle_hash: hex::encode(puzzle_hash),
             amount,
+            coinbase: false,
         }
     }
 
-    /// Create from raw bytes
-    pub fn from_bytes(parent_coin_info: &[u8], puzzle_hash: &[u8], amount: Uint64) -> Self {
-        Self {
-            parent_coin_info: hex::encode(parent_coin_info),
-            puzzle_hash: hex::encode(puzzle_hash),
-            amount,
-        }
+    /// Create from raw bytes. Returns None unless both hashes are 32 bytes.
+    pub fn from_bytes(parent_coin_info: &[u8], puzzle_hash: &[u8], amount: Uint64) -> Option<Self> {
+        let parent = Bytes32::try_from(parent_coin_info).ok()?;
+        let puzzle = Bytes32::try_from(puzzle_hash).ok()?;
+        Some(Self::new(parent, puzzle, amount))
+    }
+
+    /// Mark as a farmer / pool reward coin
+    pub fn into_coinbase(mut self) -> Self {
+        self.coinbase = true;
+        self
     }
 }
 
