@@ -1,7 +1,7 @@
 use crate::{error::ChiaError, tls};
 use chia_generator_parser::{parser::BlockParser, types::ParsedBlock};
 use chia_protocol::{
-    FullBlock, Handshake as ChiaHandshake, NewPeakWallet, NodeType, ProtocolMessageTypes,
+    FullBlock, Handshake as ChiaHandshake, NewPeak, NewPeakWallet, NodeType, ProtocolMessageTypes,
     RequestBlock, RespondBlock,
 };
 use chia_traits::Streamable;
@@ -10,8 +10,7 @@ use std::net::IpAddr;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 use tokio_tungstenite::{
-    connect_async_tls_with_config, tungstenite::Message as WsMessage, Connector, MaybeTlsStream,
-    WebSocketStream,
+    Connector, MaybeTlsStream, WebSocketStream, connect_async_tls_with_config, tungstenite::Message as WsMessage,
 };
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, trace, warn};
@@ -86,10 +85,10 @@ impl PeerConnection {
         // Send our handshake - matching SDK exactly
         let handshake = ChiaHandshake {
             network_id: self.network_id.clone(),
-            protocol_version: "0.0.37".to_string(),
+            protocol_version: "0.0.38".to_string(),
             software_version: "0.0.0".to_string(),
-            server_port: 0,              // 0 for wallet clients
-            node_type: NodeType::Wallet, // Connect as wallet
+            server_port: 8444,             // standard full node port
+            node_type: NodeType::FullNode, // connect as full node so RequestBlock is allowed
             capabilities: vec![
                 (1, "1".to_string()), // BASE
                 (2, "1".to_string()), // BLOCK_HEADERS
@@ -231,8 +230,33 @@ impl PeerConnection {
                                 }
 
                                 ProtocolMessageTypes::NewPeak => {
-                                    // This is for full nodes - we might see this too
-                                    trace!("Received NewPeak (full node message)");
+                                    // Full node announces a new peak: request the full block
+                                    if let Ok(new_peak) = NewPeak::from_bytes(&message.data) {
+                                        debug!("New peak at height {} (full node)", new_peak.height);
+
+                                        if let Err(e) = event_sender.try_send(StreamEvent::NewPeak(new_peak.height)) {
+                                            warn!("Failed to queue new peak event: {}", e);
+                                        }
+
+                                        let request = RequestBlock {
+                                            height: new_peak.height,
+                                            include_transaction_block: true,
+                                        };
+
+                                        if let Ok(request_bytes) = request.to_bytes() {
+                                            let request_msg = chia_protocol::Message {
+                                                msg_type: ProtocolMessageTypes::RequestBlock,
+                                                id: Some(1),
+                                                data: request_bytes.into(),
+                                            };
+
+                                            if let Ok(msg_bytes) = request_msg.to_bytes() {
+                                                if let Err(e) = ws_stream.send(WsMessage::Binary(msg_bytes)).await {
+                                                    error!("Failed to request block: {}", e);
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
 
                                 ProtocolMessageTypes::RespondBlock => {
