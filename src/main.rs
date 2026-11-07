@@ -24,8 +24,12 @@ async fn main() -> anyhow::Result<()> {
         buffer: 1024,
     };
 
-    let db = Database::connect().await;
-    println!("=== Latest block height: {:?} ===", db.get_max_height().await);
+    // Without a database there is nothing to do: exit with a readable error.
+    let mut db = Database::connect().await?;
+    match db.get_max_height().await? {
+        Some(h) => println!("=== Latest block height in DB: {} ===", h),
+        None => println!("=== DB is empty ==="),
+    }
 
     let listener = BlockListener::new(config)?;
     let rx = listener.subscribe();
@@ -44,6 +48,12 @@ async fn main() -> anyhow::Result<()> {
             Ok(Event::BlockReceived(block)) => {
                 if !seen_blocks.insert(block.height) {
                     continue; // already seen this block
+                }
+
+                match db.insert_block(&block).await {
+                    Ok(true) => println!("[db] saved block #{}", block.height),
+                    Ok(false) => println!("[db] block #{} already in DB", block.height),
+                    Err(e) => eprintln!("[db] failed to save block #{}: {:#}", block.height, e),
                 }
 
                 if block.coin_spends.is_empty() {

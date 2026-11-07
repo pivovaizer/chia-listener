@@ -85,8 +85,22 @@ docker compose down -v && docker compose up -d          # recreate the DB (delet
 ## Tests
 
 ```bash
-cargo test --workspace                 # offline tests
-cargo test --workspace -- --ignored    # tests that need network access (DNS)
+cargo test --workspace                 # offline tests (incl. real mainnet blocks from tests/fixtures)
+cargo test --workspace -- --ignored    # tests that need network access (DNS) or a test database
+```
+
+Real blocks used by the tests live in `tests/fixtures/`. To download more:
+
+```bash
+cargo run --example dump_block -- <height> [height ...]
+```
+
+Database tests run against a separate database, because they wipe its tables:
+
+```bash
+docker exec rustlistener createdb -U listener chia_test
+TEST_DATABASE_URL="host=127.0.0.1 port=5433 user=listener password=<password> dbname=chia_test" \
+  cargo test --test db_insert -- --ignored
 ```
 
 The parser rejects blocks it cannot parse reliably (invalid generator, spend count mismatch, references to previous generators) with an error instead of reporting them as empty. Tests cover this behaviour and the `coin_id` computation.

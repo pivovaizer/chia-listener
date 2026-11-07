@@ -1,4 +1,6 @@
 // Rust-native event and data types used by the core crate
+use chia_generator_parser::{CoinInfo, ParsedBlock};
+
 #[derive(Clone, Debug)]
 pub struct PeerConnectedEvent {
     pub peer_id: String,
@@ -75,6 +77,61 @@ pub struct BlockReceivedEvent {
     pub coin_creations: Vec<CoinRecord>,
     pub has_transactions_generator: bool,
     pub generator_size: u32,
+}
+
+impl CoinRecord {
+    pub fn from_parsed(coin: &CoinInfo) -> Self {
+        CoinRecord {
+            coin_id: coin.coin_id.clone(),
+            parent_coin_info: coin.parent_coin_info.clone(),
+            puzzle_hash: coin.puzzle_hash.clone(),
+            amount: coin.amount.to_string(),
+            coinbase: coin.coinbase,
+        }
+    }
+}
+
+impl BlockReceivedEvent {
+    /// Builds the public event from the parser output.
+    pub fn from_parsed(parsed: &ParsedBlock, peer_id: String) -> Self {
+        let to_records =
+            |coins: &[CoinInfo]| coins.iter().map(CoinRecord::from_parsed).collect::<Vec<_>>();
+
+        BlockReceivedEvent {
+            peer_id,
+            height: parsed.height,
+            weight: parsed.weight.clone(),
+            header_hash: parsed.header_hash.clone(),
+            prev_header_hash: parsed.prev_header_hash.clone(),
+            total_iters: parsed.total_iters.clone(),
+            signage_point_index: parsed.signage_point_index,
+            is_transaction_block: parsed.is_transaction_block,
+            prev_transaction_block_hash: parsed.prev_transaction_block_hash.clone(),
+            timestamp: parsed.timestamp,
+            farmer_puzzle_hash: parsed.farmer_puzzle_hash.clone(),
+            pool_puzzle_hash: parsed.pool_puzzle_hash.clone(),
+            plot_public_key: parsed.plot_public_key.clone(),
+            pool_contract_puzzle_hash: parsed.pool_contract_puzzle_hash.clone(),
+            fees: parsed.fees,
+            cost: parsed.cost,
+            generator_ref_list: parsed.generator_ref_list.clone(),
+            coin_additions: to_records(&parsed.coin_additions),
+            coin_removals: to_records(&parsed.coin_removals),
+            coin_spends: parsed
+                .coin_spends
+                .iter()
+                .map(|spend| CoinSpend {
+                    coin: CoinRecord::from_parsed(&spend.coin),
+                    puzzle_reveal: spend.puzzle_reveal.clone(),
+                    solution: spend.solution.clone(),
+                    offset: spend.offset,
+                })
+                .collect(),
+            coin_creations: to_records(&parsed.coin_creations),
+            has_transactions_generator: parsed.has_transactions_generator,
+            generator_size: parsed.generator_size.unwrap_or(0),
+        }
+    }
 }
 
 // Unified event enum for Rust consumers (Listener facade)

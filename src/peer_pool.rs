@@ -2,10 +2,9 @@ use crate::error::ChiaError;
 use crate::peer::PeerConnection;
 use crate::peer::StreamEvent;
 use crate::types::{
-    BlockReceivedEvent, CoinRecord, CoinSpend, Event, NewPeakHeightEvent, PeerConnectedEvent,
-    PeerDisconnectedEvent,
+    BlockReceivedEvent, Event, NewPeakHeightEvent, PeerConnectedEvent, PeerDisconnectedEvent,
 };
-use chia_generator_parser::{BlockParser, CoinInfo, ParsedBlock};
+use chia_generator_parser::{BlockParser, ParsedBlock};
 use chia_protocol::FullBlock;
 
 use std::collections::{HashMap, VecDeque};
@@ -1162,51 +1161,7 @@ impl ChiaPeerPool {
         parsed_block: &ParsedBlock,
         peer_id: String,
     ) -> BlockReceivedEvent {
-        fn to_record(coin: &CoinInfo) -> CoinRecord {
-            CoinRecord {
-                coin_id: coin.coin_id.clone(),
-                parent_coin_info: coin.parent_coin_info.clone(),
-                puzzle_hash: coin.puzzle_hash.clone(),
-                amount: coin.amount.to_string(),
-                coinbase: coin.coinbase,
-            }
-        }
-        let to_records = |coins: &[CoinInfo]| coins.iter().map(to_record).collect::<Vec<_>>();
-
-        BlockReceivedEvent {
-            peer_id,
-            height: parsed_block.height,
-            weight: parsed_block.weight.clone(),
-            header_hash: parsed_block.header_hash.clone(),
-            prev_header_hash: parsed_block.prev_header_hash.clone(),
-            total_iters: parsed_block.total_iters.clone(),
-            signage_point_index: parsed_block.signage_point_index,
-            is_transaction_block: parsed_block.is_transaction_block,
-            prev_transaction_block_hash: parsed_block.prev_transaction_block_hash.clone(),
-            timestamp: parsed_block.timestamp,
-            farmer_puzzle_hash: parsed_block.farmer_puzzle_hash.clone(),
-            pool_puzzle_hash: parsed_block.pool_puzzle_hash.clone(),
-            plot_public_key: parsed_block.plot_public_key.clone(),
-            pool_contract_puzzle_hash: parsed_block.pool_contract_puzzle_hash.clone(),
-            fees: parsed_block.fees,
-            cost: parsed_block.cost,
-            generator_ref_list: parsed_block.generator_ref_list.clone(),
-            coin_additions: to_records(&parsed_block.coin_additions),
-            coin_removals: to_records(&parsed_block.coin_removals),
-            coin_spends: parsed_block
-                .coin_spends
-                .iter()
-                .map(|spend| CoinSpend {
-                    coin: to_record(&spend.coin),
-                    puzzle_reveal: spend.puzzle_reveal.clone(),
-                    solution: spend.solution.clone(),
-                    offset: spend.offset,
-                })
-                .collect(),
-            coin_creations: to_records(&parsed_block.coin_creations),
-            has_transactions_generator: parsed_block.has_transactions_generator,
-            generator_size: parsed_block.generator_size.unwrap_or(0),
-        }
+        BlockReceivedEvent::from_parsed(parsed_block, peer_id)
     }
 
     async fn disconnect_peer_internal(
